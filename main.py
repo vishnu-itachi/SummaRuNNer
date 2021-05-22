@@ -46,11 +46,11 @@ parser.add_argument('-seq_trunc',type=int,default=50)
 parser.add_argument('-max_norm',type=float,default=1.0)
 # test
 parser.add_argument('-load_dir',type=str,default='checkpoints/RNN_RNN_seed_1.pt')
-parser.add_argument('-test_dir',type=str,default='data/val_ls_first100_without_scores.json')
+parser.add_argument('-test_dir',type=str,default='data/test.json')
 parser.add_argument('-ref',type=str,default='outputs/ref')
 parser.add_argument('-hyp',type=str,default='outputs/hyp')
 parser.add_argument('-filename',type=str,default='x.txt') # TextFile to be summarized
-parser.add_argument('-topk',type=int,default=30)
+parser.add_argument('-topk',type=int,default=20)
 # device
 parser.add_argument('-device',type=int)
 # option
@@ -239,14 +239,14 @@ def test():
         time_cost += t2 - t1
         start = 0
         for doc_id,doc_len in enumerate(doc_lens):
+            # print(doc_len)
             stop = start + doc_len
             prob = probs[start:stop]
             topk = min(args.topk,doc_len)
-            topk = 30
             topk_indices = prob.topk(topk)[1].cpu().data.numpy()
-            topk_indices.sort()
+            # topk_indices.sort()
             doc = batch['doc'][doc_id].split('\n')[:doc_len]
-            hyp = [doc[index] for index in topk_indices]
+            hyp = [str(prob[index].item()) + "\t"+ doc[index] for index in topk_indices]
             ref = summaries[doc_id]
             with open(os.path.join(args.ref,str(file_id)+'.txt'), 'w') as f:
                 f.write(ref)
