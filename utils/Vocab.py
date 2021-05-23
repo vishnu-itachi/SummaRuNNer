@@ -26,7 +26,7 @@ class Vocab():
         else:
             return self.UNK_IDX
 
-    def make_features(self,batch,sent_trunc=32,doc_trunc=800,split_token='\n'):
+    def make_features(self,batch,sent_trunc=32,doc_trunc=100,split_token='\n'):
         sents_list,targets,doc_lens = [],[],[]
         # trunc document
         # print(batch)
@@ -60,7 +60,7 @@ class Vocab():
                     sent,
                     None,
                     add_special_tokens=True,
-                    max_length=64,
+                    max_length=32,
                     pad_to_max_length=True,
                     return_token_type_ids=True,
                     return_tensors="pt"

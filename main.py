@@ -18,6 +18,17 @@ from transformers import BertTokenizer, BertModel
 from torch.nn.utils import clip_grad_norm
 from time import time
 from tqdm import tqdm
+from collections import namedtuple
+import pandas as pd
+from pprint import pprint
+
+
+dfc = pd.read_pickle("../dfc_0.57.pkl")
+dfg = pd.read_pickle("../dfg_0.72.pkl")
+dfo = pd.read_pickle("../dfo_0.6.pkl")
+dfs = pd.read_pickle("../dfs_0.6.pkl")
+# dfmain = pd.concat([dfc,dfg,dfo,dfs],ignore_index= True)
+# dfmain['Tweet_ID'] = dfmain['Tweet_ID'].astype(int)
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [INFO] %(message)s')
 parser = argparse.ArgumentParser(description='extractive summary')
@@ -41,7 +52,7 @@ parser.add_argument('-train_dir',type=str,default='data/train.json')
 parser.add_argument('-val_dir',type=str,default='data/val.json')
 parser.add_argument('-embedding',type=str,default='data/embedding.npz')
 parser.add_argument('-word2id',type=str,default='data/word2id.json')
-parser.add_argument('-report_every',type=int,default=1)
+parser.add_argument('-report_every',type=int,default=2)
 parser.add_argument('-seq_trunc',type=int,default=50)
 parser.add_argument('-max_norm',type=float,default=1.0)
 # test
@@ -191,8 +202,14 @@ def train():
     t2 = time()
     logging.info('Total Cost:%f h'%((t2-t1)/3600))
 
-def test():
+def Get_tweetID(sentence):
+    # same tweet content different IDs
+    x = dfmain[dfmain['Clean_Tweet']==sentence].Tweet_ID.iloc[0]
+    # print(x)
+    return int(x)
 
+def test():
+    aggregate_dict = {int(tweetd):{'sum':0,'count':0} for tweetd in dfs.Tweet_ID}
     embed = torch.Tensor(np.load(args.embedding)['embedding'])
     with open(args.word2id) as f:
         word2id = json.load(f)
@@ -243,9 +260,17 @@ def test():
             stop = start + doc_len
             prob = probs[start:stop]
             topk = min(args.topk,doc_len)
+            topk = doc_len
             topk_indices = prob.topk(topk)[1].cpu().data.numpy()
             # topk_indices.sort()
             doc = batch['doc'][doc_id].split('\n')[:doc_len]
+            tweeidlist = batch['tweetid'][doc_id].split('\n')[:doc_len]
+            for index in topk_indices:
+                sentence = doc[index]
+                # tid = Get_tweetID(sentence)
+                tid = int(tweeidlist[index])
+                aggregate_dict[tid]['sum']+=prob[index].item()
+                aggregate_dict[tid]['count']+=1
             hyp = [str(prob[index].item()) + "\t"+ doc[index] for index in topk_indices]
             ref = summaries[doc_id]
             with open(os.path.join(args.ref,str(file_id)+'.txt'), 'w') as f:
@@ -257,6 +282,8 @@ def test():
         del input_ids
         del attention_masks
         torch.cuda.empty_cache()
+
+    pprint(aggregate_dict)
     print('Speed: %.2f docs / s' % (doc_num / time_cost))
 
 
