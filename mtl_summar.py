@@ -20,7 +20,7 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 from sklearn.utils.class_weight import compute_class_weight
 from transformers import *
 from torch.autograd import Variable
-from .BasicModule import BasicModule
+from models.BasicModule import BasicModule
 import subprocess as sp
 # import matplotlib.pyplot as plt
 # from tqdm import tqdm

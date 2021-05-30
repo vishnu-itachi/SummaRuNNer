@@ -6,6 +6,8 @@ checkpoints/*
 
 data/*
 !data/.placeholder
+!data/features
+!data/gt_summ
 
 outputs/hyp/*
 !outputs/hyp/.placeholder
