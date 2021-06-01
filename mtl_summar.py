@@ -28,6 +28,8 @@ import subprocess as sp
 
 import models
 import utils
+from utils.Vocab import *
+from utils.Dataset import *
 from sklearn.model_selection import train_test_split
 import json
 from torch.nn.utils import clip_grad_norm
@@ -52,7 +54,7 @@ use_gpu = torch.cuda.is_available()
 if __name__ == "__main__":
 	parser = argparse.ArgumentParser()
 	parser.add_argument('--gpu_id', type=int, default=0)
-	parser.add_argument('--model_name', type=str, default="BERTWEET")
+	parser.add_argument('--model_name', type=str, default="BERT")
 	parser.add_argument('--in_features', type=int, default=768)
 	parser.add_argument('--save_policy', type=str, default="loss")
 	parser.add_argument('--veri_loss_fn', type=str, default="nw")
@@ -83,10 +85,10 @@ if __name__ == "__main__":
 	parser.add_argument('-model',type=str,default='RNN_RNN')
 	parser.add_argument('-hidden_size',type=int,default=200)
 	# train
-	parser.add_argument('-lr',type=float,default=1e-5)
-	parser.add_argument('-batch_size',type=int,default=32)
-	parser.add_argument('-epochs',type=int,default=15)
-	parser.add_argument('-seed',type=int,default=1)
+	# parser.add_argument('-lr',type=float,default=1e-5)
+	# parser.add_argument('-batch_size',type=int,default=32)
+	# parser.add_argument('-epochs',type=int,default=15)
+	# parser.add_argument('-seed',type=int,default=1)
 	parser.add_argument('-train_dir',type=str,default='data/train.json')
 	parser.add_argument('-val_dir',type=str,default='data/val.json')
 	parser.add_argument('-embedding',type=str,default='data/embedding.npz')
@@ -102,7 +104,7 @@ if __name__ == "__main__":
 	parser.add_argument('-filename',type=str,default='x.txt') # TextFile to be summarized
 	parser.add_argument('-topk',type=int,default=20)
 	# device
-	parser.add_argument('-device',type=int)
+	parser.add_argument('-device',type=int,default=0)
 	# option
 	parser.add_argument('-test',action='store_true')
 	parser.add_argument('-debug',action='store_true')
@@ -111,7 +113,8 @@ if __name__ == "__main__":
 
 
 	args = parser.parse_args()
-
+	args.kernel_sizes = [int(ks) for ks in args.kernel_sizes.split(',')]
+	
 	gpu_id = args.gpu_id
 	print(f'GPU_ID = {gpu_id}\n')   
 	MODEL_NAME = args.model_name
@@ -204,7 +207,7 @@ elif MODEL_NAME == 'ROBERTA':
 # 	vocab = Dictionary()
 # 	vocab.add_from_file("BERTweet_base_transformers/dict.txt")
 	
-tweetconfig = RobertaConfig.from_pretrained("MTLVS/BERTweet_base_transformers/config.json")
+tweetconfig = RobertaConfig.from_pretrained("../BERTweet_base_transformers/config.json")
 
 sigmoid_fn = torch.nn.Sigmoid()
 
@@ -382,7 +385,7 @@ def unbatch_tree_tensor(tensor, tree_sizes):
 class Hierarchial_MTL(BasicModule):
 	'''PyTorch Hierarchial_MTL model that implements efficient batching.
 	'''
-	def __init__(self, model_name, trainable_layers, in_features, out_features, classifier_dropout, mode, tweetconfig=tweetconfig):
+	def __init__(self, model_name, trainable_layers, in_features, out_features, classifier_dropout, mode, tweetconfig=tweetconfig, embed=None):
 		'''Hierarchial_MTL class initializer
 
 		Takes in int sizes of in_features and out_features and sets up model Linear network layers.
@@ -398,7 +401,7 @@ class Hierarchial_MTL(BasicModule):
 		elif model_name == 'ROBERTA':
 			self.BERT_model = RobertaModel.from_pretrained("roberta-base", output_attentions=True)
 		elif model_name == 'BERTWEET':
-			self.BERT_model = RobertaModel.from_pretrained("MTLVS/BERTweet_base_transformers/model.bin", config=tweetconfig)
+			self.BERT_model = RobertaModel.from_pretrained("../BERTweet_base_transformers/model.bin", config=tweetconfig)
 		
 		# for name, param in self.BERT_model.named_parameters():
 		#   flag = False
@@ -492,7 +495,7 @@ class Hierarchial_MTL(BasicModule):
 		return out
 
 	
-	def forward(self, features, attentions, old_features, node_order, adjacency_list, edge_order, root_node, doc_lens, trainable_part=None):
+	def forward(self, features, attentions, old_features, node_order, adjacency_list, edge_order, root_node, doc_lens = None, trainable_part=None):
 		'''Run Hierarchial_MTL model on a tree data structure with node features
 
 		Takes Tensors encoding node features, a tree node adjacency_list, and the order in which 
@@ -600,7 +603,8 @@ class Hierarchial_MTL(BasicModule):
 		H = self.args.hidden_size
 		outputs = self.BERT_model(input_ids=input_ids, attention_mask=attention_masks)
 		# hidden representation of last layer 
-		token_vecs = outputs.last_hidden_state
+		# token_vecs = outputs.last_hidden_state
+		token_vecs = outputs[0]
 		# dimension : [N,max_len_sent,768] N: no of sentences
 		k=0
 		for i in token_vecs:
@@ -770,13 +774,13 @@ def train_loop(model:Hierarchial_MTL, tree_batch, test_file, theta_dash=None, mo
 		pred_v, pred_labels = torch.max(F.softmax(pred_logits, dim=1), 1)
 		
 		# Get summarizer values.
-		summ_out = outputs[1]
-		summ_gt_labels = tree_batch['summ_gt'].to('cpu')	
-		summ_gt_labels_tensor = summ_gt_labels.clone().detach().type_as(summ_out).to(device)
-		summ_logits = summ_out.detach().cpu()
-		pred_v_summ, pred_labels_summ = torch.max(F.softmax(summ_logits, dim=1), 1)
+		# summ_out = outputs[1]
+		# summ_gt_labels = tree_batch['summ_gt'].to('cpu')	
+		# summ_gt_labels_tensor = summ_gt_labels.clone().detach().type_as(summ_out).to(device)
+		# summ_logits = summ_out.detach().cpu()
+		# pred_v_summ, pred_labels_summ = torch.max(F.softmax(summ_logits, dim=1), 1)
 
-		return pred_labels, pred_v, g_labels, pred_labels_summ, pred_v_summ, summ_gt_labels
+		return pred_labels, pred_v, g_labels
 		
 	# mode == 'train'
 	loss = None
@@ -799,46 +803,46 @@ def train_loop(model:Hierarchial_MTL, tree_batch, test_file, theta_dash=None, mo
 
 		loss = loss_function_veri(veri_logits_out, g_labels_tensor.long())
 	
-	if module == 'summarizer':
-		summ_out = outputs[1]
-		summ_gt_labels = tree_batch['summ_gt'].to('cpu')	
-		summ_gt_labels_tensor = summ_gt_labels.clone().detach().type_as(summ_out).to(device)
-		summ_logits = summ_out.detach().cpu()
-		pred_v_summ, pred_labels_summ = torch.max(F.softmax(summ_logits, dim=1), 1)
-		if SUMM_LOSS_FN == 'nw':
-			loss_function_summ = CrossEntropyLoss()
-		else:
-			class_weights = summ_weights.float()
-			loss_function_summ = CrossEntropyLoss(weight=class_weights)
+	# if module == 'summarizer':
+	# 	summ_out = outputs[1]
+	# 	summ_gt_labels = tree_batch['summ_gt'].to('cpu')	
+	# 	summ_gt_labels_tensor = summ_gt_labels.clone().detach().type_as(summ_out).to(device)
+	# 	summ_logits = summ_out.detach().cpu()
+	# 	pred_v_summ, pred_labels_summ = torch.max(F.softmax(summ_logits, dim=1), 1)
+	# 	if SUMM_LOSS_FN == 'nw':
+	# 		loss_function_summ = CrossEntropyLoss()
+	# 	else:
+	# 		class_weights = summ_weights.float()
+	# 		loss_function_summ = CrossEntropyLoss(weight=class_weights)
 		
-		# print(summ_out)
-		# g_summ_label = summ_gt_labels_tensor[:,1].long()	
-		# g_summ_label = [t[1] for t in summ_out]
-		# print("gsum shape: ",g_summ_label)
-		# print("summ_out shape: ",summ_out.shape)
+	# 	# print(summ_out)
+	# 	# g_summ_label = summ_gt_labels_tensor[:,1].long()	
+	# 	# g_summ_label = [t[1] for t in summ_out]
+	# 	# print("gsum shape: ",g_summ_label)
+	# 	# print("summ_out shape: ",summ_out.shape)
 		
-		veri_logits_out = outputs[0]
-		g_labels = tree_batch['root_label'].to('cpu')
-		g_labels_tensor = g_labels.clone().detach().type_as(veri_logits_out).to(device)
-		pred_logits = veri_logits_out.detach().cpu()
-		pred_v, pred_labels = torch.max(F.softmax(pred_logits, dim=1), 1)
-		if VERI_LOSS_FN == 'nw':
-			loss_function_veri = CrossEntropyLoss()
-		else:
-			class_weights = weights.float()
-			loss_function_veri = CrossEntropyLoss(weight=class_weights)
+	# 	veri_logits_out = outputs[0]
+	# 	g_labels = tree_batch['root_label'].to('cpu')
+	# 	g_labels_tensor = g_labels.clone().detach().type_as(veri_logits_out).to(device)
+	# 	pred_logits = veri_logits_out.detach().cpu()
+	# 	pred_v, pred_labels = torch.max(F.softmax(pred_logits, dim=1), 1)
+	# 	if VERI_LOSS_FN == 'nw':
+	# 		loss_function_veri = CrossEntropyLoss()
+	# 	else:
+	# 		class_weights = weights.float()
+	# 		loss_function_veri = CrossEntropyLoss(weight=class_weights)
 
-		veri_loss = loss_function_veri(veri_logits_out, g_labels_tensor.long())
+	# 	veri_loss = loss_function_veri(veri_logits_out, g_labels_tensor.long())
 
-		# loss_summ = loss_function_summ(summ_out, summ_gt_labels_tensor)
-		summ_loss = loss_function_summ(summ_out, tree_batch['summ_gt'].long().to(device))
-		# Add Successive Regularization term.
-		# theta = Theta(model.W_iou, model.U_iou, model.W_f, model.U_f, model.veri_fc)
-		# print(loss.grad_fn)
-		# loss = summ_loss + DELTA * Theta.get_successive_regualization_term(theta, theta_dash)
-		loss = summ_loss
-		# print(f'Successive Regularization: {Theta.get_successive_regualization_term(theta, theta_dash)}')
-		# print(loss.grad_fn)
+	# 	# loss_summ = loss_function_summ(summ_out, summ_gt_labels_tensor)
+	# 	summ_loss = loss_function_summ(summ_out, tree_batch['summ_gt'].long().to(device))
+	# 	# Add Successive Regularization term.
+	# 	# theta = Theta(model.W_iou, model.U_iou, model.W_f, model.U_f, model.veri_fc)
+	# 	# print(loss.grad_fn)
+	# 	# loss = summ_loss + DELTA * Theta.get_successive_regualization_term(theta, theta_dash)
+	# 	loss = summ_loss
+	# 	# print(f'Successive Regularization: {Theta.get_successive_regualization_term(theta, theta_dash)}')
+	# 	# print(loss.grad_fn)
 
 	optimizer.zero_grad()
 
@@ -858,15 +862,15 @@ def train_loop(model:Hierarchial_MTL, tree_batch, test_file, theta_dash=None, mo
 		# if module == 'summarizer':
 		# 	print(f'Theta Difference: {Theta.get_successive_regualization_term(theta1, theta2)}\n\n')
 	
-	if mode == 'eval':
-		# loss = LAM * veri_loss + (1 - LAM) * summ_loss
-		return loss, pred_labels, pred_v, g_labels
+	# if mode == 'eval':
+	# 	# loss = LAM * veri_loss + (1 - LAM) * summ_loss
+	# 	return loss, pred_labels, pred_v, g_labels
 	if module == 'verifier':
 		return loss, pred_labels, pred_v, g_labels
-	if module == 'summarizer':
-		return loss, pred_labels_summ, pred_v_summ, summ_gt_labels
+	# if module == 'summarizer':
+	# 	return loss, pred_labels_summ, pred_v_summ, summ_gt_labels
 
-def eval(net,vocab,data_iter,criterion):
+def eval_summar(net,vocab,data_iter,criterion):
 	with torch.no_grad():
 		net.eval()
 		total_loss = 0
@@ -894,7 +898,7 @@ def summar_train(args, net, embed ,train_iter, val_iter, epcohs, mode = None):
 	# update args
 	args.embed_num = embed.size(0)
 	args.embed_dim = embed.size(1)
-	args.kernel_sizes = [int(ks) for ks in args.kernel_sizes.split(',')]
+	
 	acc_steps = 16
 	# build model
 	# net = getattr(models,args.model)(args,embed)
@@ -931,14 +935,15 @@ def summar_train(args, net, embed ,train_iter, val_iter, epcohs, mode = None):
 				loss.backward()
 				clip_grad_norm(net.parameters(), args.max_norm)
 				optimizer.step()
+				break
 			train_loss = t_loss/s_loss
 
 		return train_loss
 	if mode == "eval":
-		cur_loss = eval(net,vocab,val_iter,criterion)
+		cur_loss = eval_summar(net,vocab,val_iter,criterion)
 		return cur_loss 
 
-def test_summar(dfp):
+def test_summar(dfp, net: Hierarchial_MTL):
 	aggregate_dict = {int(tweetd):{'sum':0,'count':0} for tweetd in dfp.Tweet_ID}
 	embed = torch.Tensor(np.load(args.embedding)['embedding'])
 	with open(args.word2id) as f:
@@ -951,7 +956,7 @@ def test_summar(dfp):
 	test_dataset = utils.Dataset(examples)
 
 	test_iter = DataLoader(dataset=test_dataset,
-							batch_size=args.batch_size,
+							batch_size= 4,
 							shuffle=False)
 	if use_gpu:
 		checkpoint = torch.load(args.load_dir)
@@ -962,8 +967,8 @@ def test_summar(dfp):
 	# if at test time, we are using a CPU, we must override device to None
 	if not use_gpu:
 		checkpoint['args'].device = None
-	net = getattr(models,checkpoint['args'].model)(checkpoint['args'])
-	net.load_state_dict(checkpoint['model'])
+	# net = getattr(models,checkpoint['args'].model)(checkpoint['args'])
+	# net.load_state_dict(checkpoint['model'])
 	if use_gpu:
 		net.cuda()
 	net.eval()
@@ -979,9 +984,9 @@ def test_summar(dfp):
 			input_ids = input_ids.cuda()
 			attention_masks = attention_masks.cuda()
 
-			probs = net(input_ids,attention_masks,doc_lens)
+			probs = net.summarunner_forward(input_ids,attention_masks,doc_lens)
 		else:
-			probs = net(input_ids,attention_masks,doc_lens)
+			probs = net.summarunner_forward(input_ids,attention_masks,doc_lens)
 		t2 = time()
 		time_cost += t2 - t1
 		start = 0
@@ -1018,10 +1023,10 @@ def test_summar(dfp):
 	return aggregate_dict
 
 def get_prob(score_dict,x):
-    tid = int(x["Tweet_ID"])
-    sum = score_dict[tid]["sum"]
-    count = score_dict[tid]["count"]
-    return sum/count
+	tid = int(x["Tweet_ID"])
+	sum = score_dict[tid]["sum"]
+	count = score_dict[tid]["count"]
+	return sum/count
 
 def save_model(model, name, val_acc=0, val_loss=1):
 	state = {
@@ -1043,12 +1048,17 @@ def load_model(model, name):
 
 
 if MODEL_NAME == 'BERT':
-	tree_path = 'MTLVS/data/features/PT_PHEME5_FeatBERT40_Depth5_maxR5_MTL_Final/'
+	tree_path = './data/features/PT_PHEME5_FeatBERT40_Depth5_maxR5_MTL_Final/'
 elif MODEL_NAME == 'ROBERTA':
-	tree_path = 'MTLVS/data/features/PT_PHEME5_FeatROBERTA40_Depth5_maxR5_MTL_Final/'
+	tree_path = './data/features/PT_PHEME5_FeatROBERTA40_Depth5_maxR5_MTL_Final/'
 elif MODEL_NAME == 'BERTWEET':
-	tree_path = 'MTLVS/data/features/PT_PHEME5_FeatBERTWEET40_Depth5_maxR5_MTL_Final/'
+	tree_path = './data/features/PT_PHEME5_FeatBERTWEET40_Depth5_maxR5_MTL_Final/'
 
+
+dfc = pd.read_pickle("./data/features/summary_dataframes/dfc_0.57.pkl")
+dfg = pd.read_pickle("./data/features/summary_dataframes/dfg_0.72.pkl")
+dfo = pd.read_pickle("./data/features/summary_dataframes/dfo_0.6.pkl")
+dfs = pd.read_pickle("./data/features/summary_dataframes/dfs_0.6.pkl")
 
 files = ['charliehebdo.txt', 'germanwings-crash.txt', 'ottawashooting.txt','sydneysiege.txt']
 summary_files = {
@@ -1130,12 +1140,6 @@ for test_file in files:
 	print(f'Verification Positive Class Weight Vector: {pos_weight_vec[test_file]}')
 	print(f'Summary Class Weight Vector: {summ_weight_vec[test_file]}')
 	print(f'Summary Positive Class Weight Vector: {summ_pos_weight_vec[test_file]}')
-
-
-dfc = pd.read_pickle("MTLVS/data/features/dfc_0.57.pkl")
-dfg = pd.read_pickle("MTLVS/data/features/dfg_0.72.pkl")
-dfo = pd.read_pickle("MTLVS/data/features/dfo_0.6.pkl")
-dfs = pd.read_pickle("MTLVS/data/features/dfs_0.6.pkl")
 
 
 def get_numwords(x):
@@ -1272,7 +1276,7 @@ for lr in lr_list:
 		# torch.cuda.manual_seed(seed_val)		
 		
 		# Path to save best models.
-		path = "./Models/"
+		path = "./checkpoints/"
 		
 		# Name of model.
 		# name = path + "hmtl_" + TEST_FILE + "_" + str(IN_FEATURES) + "_feat" + MODEL_NAME + ".pt"
@@ -1386,10 +1390,10 @@ for lr in lr_list:
 				shuffle = True)
 			
 			train_iter = DataLoader(dataset=train_dataset,
-						batch_size=args.batch_size,
+						batch_size= 4,
 						shuffle=True)
 			val_iter = DataLoader(dataset=val_dataset,
-					batch_size=args.batch_size,
+					batch_size= 4,
 					shuffle=False)
 
 
@@ -1416,6 +1420,7 @@ for lr in lr_list:
 			# train_avg_loss /= j
 			
 			# Train Verifier.
+			print("train verifier")
 			ground_labels = []
 			predicted_labels = []
 			j = 0
@@ -1428,6 +1433,7 @@ for lr in lr_list:
 				predicted_labels.extend(p_labels)
 				j = j+1
 				veri_train_avg_loss += loss
+				break
 			veri_train_acc = accuracy_score(ground_labels, predicted_labels)
 			veri_train_avg_loss /= j
 
@@ -1447,6 +1453,7 @@ for lr in lr_list:
 			summ_ground_labels = []
 			summ_predicted_labels = []
 			summ_train_avg_loss = 0
+			print("train summarizer")
 			# for tree_batch in data_gen:
 			# 	loss, p_summ_labels, p_summ_probs, summ_gt_labels = train_loop(model, tree_batch, test_file, theta_dash=theta_dash, mode="train", module="summarizer")
 			# 	summ_ground_labels.extend(summ_gt_labels)
@@ -1485,6 +1492,8 @@ for lr in lr_list:
 			# summ_val_f1 = f1_score(val_summ_ground_labels, val_summ_predicted_labels, average='macro')
 			val_avg_loss /= val_j
 			
+			save_model(model, name, veri_val_acc, val_avg_loss) 
+
 			if MODEL_SAVING_POLICY == "acc":
 				if(prev_acc <= veri_val_acc):
 					save_model(model, name, veri_val_acc, val_avg_loss)
@@ -1568,7 +1577,7 @@ for lr in lr_list:
 
 						total += 1
 				
-				aggregate_dict = test_summar(testdf)
+				aggregate_dict = test_summar(testdf,test_model)
 
 				print(f'\nTotal Test trees evaluated: {total}')
 				accuracy = accuracy_score(veri_ground, veri_predicted)
@@ -1603,6 +1612,7 @@ for lr in lr_list:
 								# "Numtokens": num_tokens}
 							)
 				dfsum["summ_pred_prob"] = dfsum.apply(get_prob(aggregate_dict),axis =1)
+				dfsum["summ_pred"] = dfsum.apply(lambda x : 1 if x["summ_pred_prob"] > 0.5  else  0, axis =1)
 				dfsum[["Orig_Tweet", "Clean_Tweet", "Norm_Tweet", "Summary_gt", "New_Summary_gt", "R1NR0", "False0_True1_Unveri2_NR3_Rep4"]] = dfsum.apply(lambda x : get_data(x), axis= 1)
 
 				# assert dfsum['Situational'].values.tolist() == dfsum['sit_tag'].values.tolist()
