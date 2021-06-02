@@ -37,7 +37,7 @@ from pprint import pprint
 
 import re
 import copy
-import time
+from time import time
 import datetime
 import rouge
 import textstat
@@ -944,6 +944,7 @@ def summar_train(args, net, embed ,train_iter, val_iter, epcohs, mode = None):
 		return cur_loss 
 
 def test_summar(dfp, net: Hierarchial_MTL):
+	dfp['Tweet_ID'] = dfp['Tweet_ID'].astype(int)
 	aggregate_dict = {int(tweetd):{'sum':0,'count':0} for tweetd in dfp.Tweet_ID}
 	embed = torch.Tensor(np.load(args.embedding)['embedding'])
 	with open(args.word2id) as f:
@@ -958,15 +959,15 @@ def test_summar(dfp, net: Hierarchial_MTL):
 	test_iter = DataLoader(dataset=test_dataset,
 							batch_size= 4,
 							shuffle=False)
-	if use_gpu:
-		checkpoint = torch.load(args.load_dir)
-	else:
-		checkpoint = torch.load(args.load_dir, map_location=lambda storage, loc: storage)
+	# if use_gpu:
+	# 	checkpoint = torch.load(args.load_dir)
+	# else:
+	# 	checkpoint = torch.load(args.load_dir, map_location=lambda storage, loc: storage)
 
 	# checkpoint['args']['device'] saves the device used as train time
 	# if at test time, we are using a CPU, we must override device to None
-	if not use_gpu:
-		checkpoint['args'].device = None
+	# if not use_gpu:
+	# 	checkpoint['args'].device = None
 	# net = getattr(models,checkpoint['args'].model)(checkpoint['args'])
 	# net.load_state_dict(checkpoint['model'])
 	if use_gpu:
@@ -1024,9 +1025,13 @@ def test_summar(dfp, net: Hierarchial_MTL):
 
 def get_prob(score_dict,x):
 	tid = int(x["Tweet_ID"])
-	sum = score_dict[tid]["sum"]
-	count = score_dict[tid]["count"]
-	return sum/count
+	try:
+		sumi = score_dict[tid]["sum"]
+		count = score_dict[tid]["count"]
+		return sumi/count
+	except Exception as e:
+		print("keyerror")
+		return 0
 
 def save_model(model, name, val_acc=0, val_loss=1):
 	state = {
@@ -1276,7 +1281,7 @@ for lr in lr_list:
 		# torch.cuda.manual_seed(seed_val)		
 		
 		# Path to save best models.
-		path = "./checkpoints/"
+		path = "./Models/"
 		
 		# Name of model.
 		# name = path + "hmtl_" + TEST_FILE + "_" + str(IN_FEATURES) + "_feat" + MODEL_NAME + ".pt"
@@ -1517,7 +1522,7 @@ for lr in lr_list:
 			# scheduler.step(veri_val_acc)
 			
 			# Testing on 5th and 10th epoch.
-			if (i+1) % 5 == 0 and i > 0:
+			if 1 or ((i+1) % 5 == 0 and i > 0):
 				load_model(test_model, name)
 				print('Now Testing:', test_file)
 				total = 0
@@ -1567,18 +1572,18 @@ for lr in lr_list:
 						veri_prob.append(pred_v.item())
 						veri_ground.append(g_label.item())		
 
-						# summ_gt_label = test['summ_gt'].to('cpu')	
+						summ_gt_label = test['summ_gt'].to('cpu')
 						# summ_logits = summ_out.detach().cpu()
 						# pred_v_summ, pred_label_summ = torch.max(F.softmax(summ_logits, dim=1), 1)
 						# summ_predicted.append(pred_label_summ.item())
 						# summ_prob.append(pred_v_summ.item())						
-						# summ_ground.append(summ_gt_label.item())
+						summ_ground.append(summ_gt_label.item())
 
 
 						total += 1
 				
 				aggregate_dict = test_summar(testdf,test_model)
-
+				
 				print(f'\nTotal Test trees evaluated: {total}')
 				accuracy = accuracy_score(veri_ground, veri_predicted)
 				print('Accuracy: %f' % accuracy)
@@ -1611,7 +1616,10 @@ for lr in lr_list:
 								# "Attentions": token_attentions} 
 								# "Numtokens": num_tokens}
 							)
-				dfsum["summ_pred_prob"] = dfsum.apply(get_prob(aggregate_dict),axis =1)
+				pprint(dfsum.Tweet_ID)
+				print(len(aggregate_dict), len(dfsum))
+				assert list(dfsum.Tweet_ID).sort() == aggregate_dict.keys().sort()
+				dfsum["summ_pred_prob"] = dfsum.apply(lambda x : get_prob(aggregate_dict,x),axis =1)
 				dfsum["summ_pred"] = dfsum.apply(lambda x : 1 if x["summ_pred_prob"] > 0.5  else  0, axis =1)
 				dfsum[["Orig_Tweet", "Clean_Tweet", "Norm_Tweet", "Summary_gt", "New_Summary_gt", "R1NR0", "False0_True1_Unveri2_NR3_Rep4"]] = dfsum.apply(lambda x : get_data(x), axis= 1)
 
@@ -1648,10 +1656,10 @@ for lr in lr_list:
 					print(f'Verified_Ratio of tweets: {veri_prop}')
 					print(f'Modified verified_Ratio of tweets: {modified_veri_prop}\n\n')
 
-					with open(TEST_FILE + "_test_orig_250.txt",'w') as f:
+					with open("../" + TEST_FILE + "_test_orig_250.txt",'w') as f:
 						f.write(summ_orig)
 
-					with open(TEST_FILE + "_test_clean_250.txt",'w') as f:
+					with open("../" + TEST_FILE + "_test_clean_250.txt",'w') as f:
 						f.write(summ_clean)
 
 					# content = ""
@@ -1713,7 +1721,7 @@ for lr in lr_list:
 
 					print("\n\nFor Original Summary:")
 					if summ_orig.strip() != "":
-						os.chdir("twitie-tagger")
+						os.chdir("../twitie-tagger")
 						# return_code = subprocess.call("/usr/lib/jvm/java-8-openjdk-amd64/jre/bin/java -jar twitie_tag.jar models/gate-EN-twitter.model '../" + TEST_FILE + "_test_orig_250.txt' > '../" + TEST_FILE + "_output_orig_250.txt'", shell=True)
 						return_code = subprocess.call("java -jar twitie_tag.jar models/gate-EN-twitter.model '../" + TEST_FILE + "_test_orig_250.txt' > '../" + TEST_FILE + "_output_orig_250.txt'", shell=True)
 						os.chdir("..")
@@ -1739,7 +1747,7 @@ for lr in lr_list:
 
 					print("\n\nFor Cleaned Summary:")
 					if summ_clean.strip() != "":
-						os.chdir("twitie-tagger")
+						os.chdir("../twitie-tagger")
 						# return_code = subprocess.call("/usr/lib/jvm/java-8-openjdk-amd64/jre/bin/java -jar twitie_tag.jar models/gate-EN-twitter.model '../" + TEST_FILE + "_test_clean_250.txt' > '../" + TEST_FILE + "_output_clean_250.txt'", shell=True)
 						return_code = subprocess.call("java -jar twitie_tag.jar models/gate-EN-twitter.model '../" + TEST_FILE + "_test_clean_250.txt' > '../" + TEST_FILE + "_output_clean_250.txt'", shell=True)
 						os.chdir("..")
