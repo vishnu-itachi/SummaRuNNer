@@ -935,7 +935,7 @@ def summar_train(args, net, embed ,train_iter, val_iter, epcohs, mode = None):
 				loss.backward()
 				clip_grad_norm(net.parameters(), args.max_norm)
 				optimizer.step()
-				break
+				# break
 			train_loss = t_loss/s_loss
 
 		return train_loss
@@ -1285,7 +1285,7 @@ for lr in lr_list:
 		# torch.cuda.manual_seed(seed_val)		
 		
 		# Path to save best models.
-		path = "./Models/"
+		path = "./checkpoints/"
 		
 		# Name of model.
 		# name = path + "hmtl_" + TEST_FILE + "_" + str(IN_FEATURES) + "_feat" + MODEL_NAME + ".pt"
@@ -1471,7 +1471,7 @@ for lr in lr_list:
 				predicted_labels.extend(p_labels)
 				j = j+1
 				veri_train_avg_loss += loss
-				break
+				# break
 			veri_train_acc = accuracy_score(ground_labels, predicted_labels)
 			veri_train_avg_loss /= j
 
@@ -1555,7 +1555,7 @@ for lr in lr_list:
 			# scheduler.step(veri_val_acc)
 			
 			# Testing on 5th and 10th epoch.
-			if 1 or ((i+1) % 5 == 0 and i > 0):
+			if ((i+1) % 5 == 0 and i > 0):
 				load_model(test_model, name)
 				print('Now Testing:', test_file)
 				total = 0
@@ -1651,8 +1651,8 @@ for lr in lr_list:
 							)
 				# pprint(dfsum.Tweet_ID)
 				# print(len(aggregate_dict), len(dfsum))
-				assert list(dfsum.Tweet_ID).sort() == aggregate_dict.keys().sort()
-				dfsum["summ_pred_prob"] = dfsum["Tweet_ID"].apply(lambda x : get_prob(aggregate_dict,x),axis =1)
+				assert list(dfsum.Tweet_ID).sort() == list(aggregate_dict.keys()).sort()
+				dfsum["summ_pred_prob"] = dfsum["Tweet_ID"].apply(lambda x : get_prob(aggregate_dict,x))
 				dfsum["summ_pred"] = dfsum.apply(lambda x : 1 if x["summ_pred_prob"] > 0.5  else  0, axis =1)
 				dfsum[["Orig_Tweet", "Clean_Tweet", "Norm_Tweet", "Summary_gt", "New_Summary_gt", "R1NR0", "False0_True1_Unveri2_NR3_Rep4"]] = dfsum.apply(lambda x : get_data(x), axis= 1)
 
@@ -1754,7 +1754,8 @@ for lr in lr_list:
 
 					print("\n\nFor Original Summary:")
 					if summ_orig.strip() != "":
-						os.chdir("../twitie-tagger")
+						print(os.getcwd())
+						os.chdir("twitie-tagger")
 						# return_code = subprocess.call("/usr/lib/jvm/java-8-openjdk-amd64/jre/bin/java -jar twitie_tag.jar models/gate-EN-twitter.model '../" + TEST_FILE + "_test_orig_250.txt' > '../" + TEST_FILE + "_output_orig_250.txt'", shell=True)
 						return_code = subprocess.call("java -jar twitie_tag.jar models/gate-EN-twitter.model '../" + TEST_FILE + "_test_orig_250.txt' > '../" + TEST_FILE + "_output_orig_250.txt'", shell=True)
 						os.chdir("..")
@@ -1780,7 +1781,7 @@ for lr in lr_list:
 
 					print("\n\nFor Cleaned Summary:")
 					if summ_clean.strip() != "":
-						os.chdir("../twitie-tagger")
+						os.chdir("twitie-tagger")
 						# return_code = subprocess.call("/usr/lib/jvm/java-8-openjdk-amd64/jre/bin/java -jar twitie_tag.jar models/gate-EN-twitter.model '../" + TEST_FILE + "_test_clean_250.txt' > '../" + TEST_FILE + "_output_clean_250.txt'", shell=True)
 						return_code = subprocess.call("java -jar twitie_tag.jar models/gate-EN-twitter.model '../" + TEST_FILE + "_test_clean_250.txt' > '../" + TEST_FILE + "_output_clean_250.txt'", shell=True)
 						os.chdir("..")
