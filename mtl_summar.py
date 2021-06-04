@@ -1019,12 +1019,13 @@ def test_summar(dfp, net: Hierarchial_MTL):
 		del attention_masks
 		torch.cuda.empty_cache()
 
-	pprint(aggregate_dict)
+	# pprint(aggregate_dict)
 	print('Speed: %.2f docs / s' % (doc_num / time_cost))
 	return aggregate_dict
 
 def get_prob(score_dict,x):
-	tid = int(x["Tweet_ID"])
+	# tid = int(x["Tweet_ID"])
+	tid = int(x)
 	try:
 		sumi = score_dict[tid]["sum"]
 		count = score_dict[tid]["count"]
@@ -1064,6 +1065,9 @@ dfc = pd.read_pickle("./data/features/summary_dataframes/dfc_0.57.pkl")
 dfg = pd.read_pickle("./data/features/summary_dataframes/dfg_0.72.pkl")
 dfo = pd.read_pickle("./data/features/summary_dataframes/dfo_0.6.pkl")
 dfs = pd.read_pickle("./data/features/summary_dataframes/dfs_0.6.pkl")
+dfmain = pd.concat([dfc,dfg,dfo,dfs],ignore_index= True)
+dfmain['Tweet_ID'] = dfmain['Tweet_ID'].astype(int)
+
 
 files = ['charliehebdo.txt', 'germanwings-crash.txt', 'ottawashooting.txt','sydneysiege.txt']
 summary_files = {
@@ -1322,11 +1326,27 @@ for lr in lr_list:
 				train_trees.extend(curr_tree_dataset)
 				val_data.extend(TreeDataset(val_li[filename]))
 		
-		traindflist = summary_files[test]['traindflist']
-		testdf = summary_files[test]['testdf']
-		placelist , testplacelist = createplacelist(traindflist, testdf)
+		train_tweetid = []
+		for tweet in train_trees:
+			# print(tweet)
+			train_tweetid.append(tweet["tweet_id"].item())
+		
+		val_tweetid = []
+		for tweet in val_data:
+			# print(tweet)
+			val_tweetid.append(tweet["tweet_id"].item())
 
-		dataset = Custom_Dataset(placelist,64)
+		dft = dfmain[dfmain["Tweet_ID"].isin(train_tweetid)]
+		dfv = dfmain[dfmain["Tweet_ID"].isin(val_tweetid)]
+
+		traindflist = [v for k,v in dft.groupby("Event")]
+		valflist = [v for k,v in dfv.groupby("Event")]
+
+		# traindflist = summary_files[test]['traindflist']
+		testdf = summary_files[test]['testdf']
+		trainplacelist, valplacelist, testplacelist = createplacelist(traindflist, valflist, testdf)
+
+		dataset = Custom_Dataset(trainplacelist,64)
 		tweetid = []
 		doc =[]
 		labels =[]
@@ -1337,8 +1357,21 @@ for lr in lr_list:
 			labels.append(i[2])
 			summaries.append(i[3])
 
-		df = pd.DataFrame({'tweetid': tweetid,'doc':doc,'labels':labels,'summaries':summaries})
-		df_train , df_val = train_test_split(df,test_size = 0.1)
+		df_train = pd.DataFrame({'tweetid': tweetid,'doc':doc,'labels':labels,'summaries':summaries})
+		# df_train , df_val = train_test_split(df,test_size = 0.1)
+
+		dataset = Custom_Dataset(valplacelist,64)
+		tweetid = []
+		doc =[]
+		labels =[]
+		summaries =[]
+		for i in dataset:
+			tweetid.append(i[0])
+			doc.append(i[1])
+			labels.append(i[2])
+			summaries.append(i[3])
+
+		df_val = pd.DataFrame({'tweetid': tweetid,'doc':doc,'labels':labels,'summaries':summaries})
 
 		dataset = Custom_Dataset(testplacelist,64)
 		tweetid = []
@@ -1616,10 +1649,10 @@ for lr in lr_list:
 								# "Attentions": token_attentions} 
 								# "Numtokens": num_tokens}
 							)
-				pprint(dfsum.Tweet_ID)
-				print(len(aggregate_dict), len(dfsum))
+				# pprint(dfsum.Tweet_ID)
+				# print(len(aggregate_dict), len(dfsum))
 				assert list(dfsum.Tweet_ID).sort() == aggregate_dict.keys().sort()
-				dfsum["summ_pred_prob"] = dfsum.apply(lambda x : get_prob(aggregate_dict,x),axis =1)
+				dfsum["summ_pred_prob"] = dfsum["Tweet_ID"].apply(lambda x : get_prob(aggregate_dict,x),axis =1)
 				dfsum["summ_pred"] = dfsum.apply(lambda x : 1 if x["summ_pred_prob"] > 0.5  else  0, axis =1)
 				dfsum[["Orig_Tweet", "Clean_Tweet", "Norm_Tweet", "Summary_gt", "New_Summary_gt", "R1NR0", "False0_True1_Unveri2_NR3_Rep4"]] = dfsum.apply(lambda x : get_data(x), axis= 1)
 

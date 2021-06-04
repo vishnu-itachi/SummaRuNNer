@@ -89,10 +89,11 @@ class Custom_Dataset(Dataset):
         # dfdoc = pd.DataFrame({'doc':doc,'labels':labels,'summaries':summaries})
         return (tweetid, doc, labels,summaries)
 
-def createplacelist(traindflist, testdf):
+def createplacelist(traindflist, valdflist, testdf):
     maxlen = max([len(i) for i in traindflist])
     r = math.ceil(maxlen/64)
     trainplacelist = [Place(i,replicate=r) for i in traindflist]
+    valplacelist = [Place(i,replicate=r) for i in valdflist]
     testplacelist = [Place(testdf, replicate=r)]
 
-    return trainplacelist , testplacelist
+    return trainplacelist, valplacelist, testplacelist
